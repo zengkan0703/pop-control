@@ -29,7 +29,7 @@ export default class PopControl {
     this.next();
   }
   /**
-   * 重置依赖接口状态
+   * 重置依赖接口状态和弹窗数据
    * @param {Array} interfaces  弹窗依赖的所有接口 key
    */
   reset(interfaces) {
