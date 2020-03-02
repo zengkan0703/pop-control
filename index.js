@@ -1,56 +1,76 @@
-// 新手引导 --> 更新公告 --> 2.3 上线后提示用户已开启几个互动地块 --> 宝箱弹窗 --> 签到 --> 专属陌客 --> 好友地块打开或者过期弹窗 --> 被赠送房屋和背景弹窗 --> 被赠送营养液弹窗
-// --> 除虫补偿弹窗 --> 游戏室导流弹窗 --> 荣誉称号弹窗  --> 任务奖励未领取弹窗
-const sortBase = [
-  "userGuide",
-  "updatePop",
-  "initRentPlot",
-  "giftPop",
-  "signPop",
-  "openConsume",
-  "receiveGift",
-  "friendPlotPop",
-  "equipmentGift",
-  "nutrientGift",
-  "wormReduce",
-  "refusGame",
-  "honorPop",
-  "activityRewardPop"
-];
-const popSortMap = {};
-sortBase.forEach((item, idx) => {
-  popSortMap[item] = idx;
-});
-
-class PopControl {
-  constructor() {
-    this.reset(true);
+export default class PopControl {
+  /**
+   * @param {Array} sortKeys 所有弹窗的 key，按照展示顺序排序
+   * @param {Array} interfaces  弹窗依赖的所有接口 key
+   */
+  constructor(sortKeys, interfaces) {
+    this._sortInit(sortKeys);
+    this.reset(interfaces);
   }
-  reset(updatePop) {
-    this.popList = [];
-    this.runing = false;
-    this.currentItem = {};
+  /**
+   * 排序初始化，生成弹窗顺序映射，方便之后排序
+   * @param {Array} sortKeys 所有弹窗的 key，按照展示顺序排序
+   */
+  _sortInit(sortKeys) {
+    const popSortMap = {};
+    sortKeys.forEach((item, idx) => {
+      popSortMap[item] = idx;
+    });
+    this.popSortMap = popSortMap; 
+  }
+  /**
+   * 弹窗按照展示顺序排序
+   */
+  _sort() {
+    this.popList = this.popList.sort((a, b) => a.idx - b.idx);
+  }
+  _start() {
+    this._sort();
+    this.next();
+  }
+  /**
+   * 重置依赖接口状态
+   * @param {Array} interfaces  弹窗依赖的所有接口 key
+   */
+  reset(interfaces) {
+    this.popList = []; // 所有弹窗的配置和回调
+    this.runing = false; // 标记弹窗是否已经开始展示
+    this.currentItem = {}; // 当前执行的弹窗
     this.popKeys = [];
-    const interfaces = {
-      ajaxCommon: false,
-      ajaxGardenInfo: false,
-      initPlant: false,
-      ajaxGetReceiveGiftList: false
-    };
-    console.log("popControl reset", updatePop);
-    if (updatePop) {
-      this.interfaces = {
-        ...interfaces,
-        ajaxGetPopNotify: false
-      };
-    } else {
-      this.interfaces = interfaces;
+    this.interfaces = interfaces.reduce((p, n) => {
+      p[n] = false;
+      return p;
+    }, {});
+  }
+  /**
+   * 用来标记该接口已经请求完成
+   * @param {String} key 依赖接口的 key
+   */
+  load(key) {
+    if (Object.keys(this.interfaces).length === 0) {
+      return;
+    }
+    delete this.interfaces[key];
+    // 加延迟保证在接口 load 完成之后，所有弹窗都已经 push 进来
+    if (Object.keys(this.interfaces).length === 0) {
+      setTimeout(() => {
+        console.log("开始展示弹窗");
+        this._start();
+        this.runing = true;
+      }, 0);
     }
   }
-  // repeatPushShow 表示重复插入的处理
+  /**
+   * 插入弹窗的方法
+   * @param {String} key 弹窗的 key
+   * @param {Function} callback 展示弹窗的处理函数
+   * @param {Number} startDelay 弹窗展示前延迟
+   * @param {Number} endDelay 弹窗消失后的延迟
+   * @param {Boolean} repeatPushShow 对重复插入的弹窗的处理，true 表示直接执行 callback
+   */
   push(key, callback, startDelay = 100, endDelay = 100, repeatPushShow = true) {
-    // 三个接口都没有 load 完成且当前弹窗没有被插入进来
+    // 依赖接口没有 load 完成且当前弹窗没有被插入进来
     if (!this.runing && !this.popKeys.some(d => d === key)) {
-      console.log("插入 ==>", key);
       this.popList.push({
         key,
         callback,
@@ -60,43 +80,20 @@ class PopControl {
       });
       this.popKeys.push(key);
     } else if (this.runing && this.popKeys.some(d => d === key) && repeatPushShow) {
-      // 在三个接口 load 完成之后，已经添加过的重复添加就直接执行
+      // 依赖接口 load 完成之后，已经添加过的重复添加就直接执行
       console.log(`重复插入${key}, 直接执行`);
       callback();
-      // 新手直接进入他人庄园之后回来，点击去种植会重复请求更新公告，导致直接出现了更新公告
     }
   }
-  load(key) {
-    if (Object.keys(this.interfaces).length === 0) {
-      return;
-    }
-    delete this.interfaces[key];
-    console.log("load ==>", key);
-    // 移动端 mm.storage.getItem 是异步的，而很多弹窗是在 mm.storage.getItem 回调中添加的，
-    // 导致接口已经 load 但是弹窗还没有 push 进来，load 加延迟就是为了解决这个问题
-    if (Object.keys(this.interfaces).length === 0) {
-      setTimeout(() => {
-        console.log("开始展示弹窗");
-        this.start();
-        this.runing = true;
-      }, 500);
-    }
-  }
-  sort() {
-    this.popList = this.popList.sort((a, b) => a.idx - b.idx);
-    console.log(JSON.parse(JSON.stringify(this.popList)), "this.popList");
-  }
-  start() {
-    this.sort();
-    this.next();
-  }
+  /**
+   * 标记当前弹窗展示完成，开始展示下一个弹窗
+   * @param {String} key 当前展示完成的弹窗
+   */
   next(key) {
     // 判断当前完成的 key 是不是当前执行的弹窗，避免多次调用导致的问题
-    // console.log("next", key, this.currentItem.key);
     if (key === this.currentItem.key) {
       const item = this.popList.shift();
       if (item) {
-        console.log("当前执行 ==>", item, this.popList);
         const delay = this.currentItem.endDelay || 0 + item.startDelay;
         setTimeout(() => {
           item.callback();
@@ -105,6 +102,4 @@ class PopControl {
       }
     }
   }
-}
-
-export default new PopControl();
+};
